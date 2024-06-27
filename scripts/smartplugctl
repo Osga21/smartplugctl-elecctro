@@ -1,0 +1,229 @@
+#!/usr/bin/env python
+
+# smartPlug AWOX control with Bluez
+#
+# Control an AWOX smartPlug (BLE electrical plug with relay) from command line
+# sample: './smart_plug_ctl.py 98:7B:F3:34:78:52 on' to turn on the plug
+#
+# needs: bluez and python bluepy module
+#
+# license: MIT
+
+from __future__ import print_function
+import sys
+import argparse
+import pprint
+from pySmartPlugSmpB16 import SmartPlug, btle
+
+# Initialize the argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument('ble_addr', type=str, 
+                    help='plug bluetooth LE address (like 98:7b:f3:34:78:52)')
+
+# Create subparsers for commands
+subparsers = parser.add_subparsers(title='command', dest='command')
+
+# Define each command and its arguments
+subparsers.add_parser('on', help='Turn plug on')
+subparsers.add_parser('off', help='Turn plug off')
+subparsers.add_parser('status', help='Read plug status (on/off, power level and grid voltage)')
+subparsers.add_parser('history_hour', help='Read hourly consumption history (24 hours from now)')
+subparsers.add_parser('history_day', help='Read daily consumption history (30 days from today)')
+subparsers.add_parser('program_read', help='Read current programs')
+
+parser_program_enable = subparsers.add_parser('program_enable', help='Enable/Disable one program')
+parser_program_enable.add_argument('program', type=int, choices=range(0, 5), help='Program number')
+parser_program_enable.add_argument('state', type=str, choices=['on', 'off'], help='State of the program')
+
+parser_program_update = subparsers.add_parser('program_update', help='Create/modify one program')
+parser_program_update.add_argument('program', type=int, choices=range(0, 5), help='Program number')
+parser_program_update.add_argument('start', type=str, help='Start time or - for no value')
+parser_program_update.add_argument('end', type=str, help='End time or - for no value')
+
+parser_program_delete = subparsers.add_parser('program_delete', help='Delete one program')
+parser_program_delete.add_argument('program', type=int, choices=range(0, 5), help='Program number')
+
+subparsers.add_parser('set_time', help='Set current time to the plug')
+subparsers.add_parser('reset', help='Reset the plug history and program')
+
+parser_light_enable = subparsers.add_parser('light_enable', help='Enable/Disable notification light')
+parser_light_enable.add_argument('state', type=str, choices=['on', 'off'], help='State of the notification light')
+
+subparsers.add_parser('get_name', help='Get the plug name')
+
+parser_set_name = subparsers.add_parser('set_name', help='Set the plug name')
+parser_set_name.add_argument('name', type=str, help='New name for the plug')
+
+parser_set_name = subparsers.add_parser('get_coffee', help='get a coffee')
+parser_set_name.add_argument('setTime', type=int, help='time')
+
+# Parse the arguments
+args = parser.parse_args()
+
+# connect to the plug (BLE connect)
+try:
+    plug = SmartPlug(args.ble_addr)
+except btle.BTLEException as err:
+    sys.exit('error when connect to %s (code %d)' % (args.ble_addr, err.code))
+
+# set plug on/off
+if args.command == 'on':
+    try:
+        is_ok = plug.on()
+    except btle.BTLEException as err:
+        sys.exit('error when setting plug %s on (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('smartPlug is set on')
+    else:
+        sys.exit('unable to set smartPlug on')
+elif args.command == 'off':
+    try:
+        is_ok = plug.off()
+    except btle.BTLEException as err:
+        sys.exit('error when setting plug %s off (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('smartPlug is set off')
+    else:
+        sys.exit('unable to set smartPlug off')
+
+elif args.command =='get_coffee':
+    plug.get_coffee(args.setTime)
+
+elif args.command == 'status':
+    try:
+        (state, power, voltage) = plug.status_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting stat to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    status = 'on' if state else 'off'
+    print('plug state   = %s' % status)
+    print('plug power   = %d W' % power)
+    print('plug voltage = %d V' % voltage)
+elif args.command == 'program_read':
+    try:
+        (programs) = plug.program_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting program to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    print('plug programs : ' )
+    pprint.pprint(programs)
+elif args.command == 'history_hour':
+    try:
+        history = plug.power_history_hour_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting power history to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    for i, h in enumerate(history):
+        print('plug power h-%02u = %d Wh' % (i+1, h))
+elif args.command == 'history_day':
+    try:
+        history = plug.power_history_day_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting power history to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    for i, h in enumerate(history):
+        print('plug power j-%02u = %d Wh' % (i+1, h))
+elif args.command == 'program_enable':
+    try:
+        (programs) = plug.program_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting program to plug %s (code %d)' % (args.ble_addr, err.code))
+    program_number = args.program
+    if len(programs) > program_number:
+        if args.state == "on":
+            programs[program_number]["flags"] |= 0x80
+        else:
+            programs[program_number]["flags"] &= 0x7F
+    else:
+        sys.exit('program %d does not exist' % (program_number))
+    try:
+        plug.program_write(programs)
+    except btle.BTLEException as err:
+        sys.exit('error when writing program to plug %s (code %d)' % (args.ble_addr, err.code))
+elif args.command == 'program_update':
+    try:
+        programs = plug.program_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting program to plug %s (code %d)' % (args.ble_addr, err.code))
+    program_number = args.program
+
+    # add programs empty to go to index
+    while len(programs) <= program_number:
+        programs.append({'name':'program', 'start':None, 'end':None, 'flags':0x7F})
+
+    if args.start == '-':
+        programs[program_number]["start"] = None
+    else:
+        programs[program_number]["start"] = args.start
+    if args.end == '-':
+        programs[program_number]["end"] = None
+    else:
+        programs[program_number]["end"] = args.end
+    try:
+        plug.program_write(programs)
+    except btle.BTLEException as err:
+        sys.exit('error when writing program to plug %s (code %d)' % (args.ble_addr, err.code))
+elif args.command == 'program_delete':
+    try:
+        programs = plug.program_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting program to plug %s (code %d)' % (args.ble_addr, err.code))
+    program_number = args.program
+
+    if len(programs) > program_number:
+        programs.pop(program_number)
+    else:
+        sys.exit('program %d does not exist' % (program_number))
+
+    try:
+        plug.program_write(programs)
+    except btle.BTLEException as err:
+        sys.exit('error when writing program to plug %s (code %d)' % (args.ble_addr, err.code))
+elif args.command == 'set_time':
+    try:
+        is_ok = plug.set_time()
+    except btle.BTLEException as err:
+        sys.exit('error when setting time to plug %s (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('time is set on smartPlug')
+    else:
+        sys.exit('unable to set time on SmartPlug')
+elif args.command == 'reset':
+    try:
+        is_ok = plug.reset()
+    except btle.BTLEException as err:
+        sys.exit('error when reset plug %s (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('reset smartPlug')
+    else:
+        sys.exit('unable reset SmartPlug')
+elif args.command == 'light_enable':
+    try:
+        is_ok = plug.light_enable(args.state == 'on')
+    except btle.BTLEException as err:
+        sys.exit('error when setting light enable to plug %s (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('light enable set on smartPlug')
+    else:
+        sys.exit('unable to set light enable on SmartPlug')
+elif args.command == 'get_name':
+    try:
+        name = plug.get_name()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting name of plug %s (code %d)' % (args.ble_addr, err.code))
+    print('plug name   = %s' % name)
+elif args.command == 'set_name':
+    try:
+        is_ok = plug.set_name(args.name)
+    except btle.BTLEException as err:
+        sys.exit('error when setting name to plug %s (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('name set on smartPlug')
+    else:
+        sys.exit('unable to set name on SmartPlug')
+# disconnect BLE
+plug.disconnect()
+
+# exit without error
+sys.exit(0)
+

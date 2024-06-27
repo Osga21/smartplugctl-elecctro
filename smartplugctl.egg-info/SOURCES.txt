@@ -1,0 +1,11 @@
+LICENSE
+README.md
+pySmartPlugSmpB16.py
+setup.py
+scripts/smartplugctl
+scripts/smartplugscan
+smartplugctl.egg-info/PKG-INFO
+smartplugctl.egg-info/SOURCES.txt
+smartplugctl.egg-info/dependency_links.txt
+smartplugctl.egg-info/requires.txt
+smartplugctl.egg-info/top_level.txt
