@@ -44,18 +44,18 @@ class SmartPlug(btle.Peripheral):
     def on(self):
         self.delegate.chg_is_ok = False
         self.write_data(self.get_buffer(binascii.unhexlify('0300010000')))
-        self.wait_data(0.5)
+        self.wait_data(0.1)
         return self.delegate.chg_is_ok
 
     def off(self):
         self.delegate.chg_is_ok = False
         self.write_data(self.get_buffer(binascii.unhexlify('0300000000')))
-        self.wait_data(0.5)
+        self.wait_data(0.1)
         return self.delegate.chg_is_ok
 
     def status_request(self):
         self.write_data(self.get_buffer(binascii.unhexlify('04000000')))
-        self.wait_data(.5)
+        self.wait_data(.1)
         return self.delegate.state, self.delegate.power, self.delegate.voltage
 
     def power_history_hour_request(self):
@@ -75,11 +75,36 @@ class SmartPlug(btle.Peripheral):
         else:
             return "unknown" 
 
+    def strobe(self,setTime):
+        
+
+        step=.2
+        timestamps = []
+        power_values = []
+        elapsed=0
+        lastReading=0
+        stateChangeMargin=5
+
+        while(setTime>0):
+            self.on() #turn on plug
+
+            setTime -= step
+            state, power, voltage = self.status_request()
+                
+            print(f"[{elapsed:.1f}s]" , end='\r')
+
+            time.sleep(step)
+            self.off() #turn on plug
+            time.sleep(step)
+            elapsed+=step
+            
+        if(self.off()):
+            print("Turned off",end='\n')
 
     def get_coffee(self,setTime):
         self.on() #turn on plug
 
-        step=1
+        step=.2
         timestamps = []
         power_values = []
         elapsed=0
@@ -91,19 +116,18 @@ class SmartPlug(btle.Peripheral):
             setTime -= step
             state, power, voltage = self.status_request()
                 
-            print(f"[{elapsed}s] ({power}W) {self.determine_state(power)}" , end='\n')
+            print(f"[{elapsed:.1f}s] ({power}W) {self.determine_state(power)}" , end='\n')
 
             timestamps.append(elapsed)
             power_values.append(power)            
             time.sleep(step)
 
             lastReading=power
-            elapsed+=1
+            elapsed+=step
             
         if(self.off()):
             print("Turned off",end='\n')
 
-        
         #graph
         #plt.figure(figsize=(10, 6))  # Adjust figure size if needed
         plt.plot(timestamps, power_values, marker='o', linestyle='-')

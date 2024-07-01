@@ -24,6 +24,8 @@ parser.add_argument('ble_addr', type=str,
 subparsers = parser.add_subparsers(title='command', dest='command')
 
 # Define each command and its arguments
+subparsers.add_parser('disco_on', help='Turn plug on')
+subparsers.add_parser('disco_off', help='Turn plug disco off')
 subparsers.add_parser('on', help='Turn plug on')
 subparsers.add_parser('off', help='Turn plug off')
 subparsers.add_parser('status', help='Read plug status (on/off, power level and grid voltage)')
@@ -55,6 +57,9 @@ parser_set_name = subparsers.add_parser('set_name', help='Set the plug name')
 parser_set_name.add_argument('name', type=str, help='New name for the plug')
 
 parser_set_name = subparsers.add_parser('get_coffee', help='get a coffee')
+parser_set_name.add_argument('setTime', type=int, help='time')
+
+parser_set_name = subparsers.add_parser('strobe', help='test speed')
 parser_set_name.add_argument('setTime', type=int, help='time')
 
 # Parse the arguments
@@ -89,6 +94,8 @@ elif args.command == 'off':
 elif args.command =='get_coffee':
     plug.get_coffee(args.setTime)
 
+elif args.command =='strobe':
+    plug.strobe(args.setTime)
 elif args.command == 'status':
     try:
         (state, power, voltage) = plug.status_request()
