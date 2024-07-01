@@ -34,6 +34,11 @@ install it with :
 ### Find a plug
 
     sudo smartplugscan
+    
+### Get a coffe/monitor power draw in real time for 60 seconds
+
+    smartplugctl 98:7B:F3:34:78:52 get_coffee 60
+
 
 ### Turn plug on
 
