@@ -53,9 +53,9 @@ class SmartPlug(btle.Peripheral):
         self.wait_data(0.1)
         return self.delegate.chg_is_ok
 
-    def status_request(self):
+    def status_request(self,timeout=0.2):
         self.write_data(self.get_buffer(binascii.unhexlify('04000000')))
-        self.wait_data(.1)
+        self.wait_data(timeout)
         return self.delegate.state, self.delegate.power, self.delegate.voltage
 
     def power_history_hour_request(self):
@@ -101,10 +101,10 @@ class SmartPlug(btle.Peripheral):
         if(self.off()):
             print("Turned off",end='\n')
 
-    def get_coffee(self,setTime):
+    def get_coffee(self,setTime,step=0.4):
+        
         self.on() #turn on plug
 
-        step=.2
         timestamps = []
         power_values = []
         elapsed=0
@@ -114,13 +114,20 @@ class SmartPlug(btle.Peripheral):
         while(setTime>0):
 
             setTime -= step
-            state, power, voltage = self.status_request()
-                
+
+            readStart=time.time_ns()
+            
+            state, power, voltage = self.status_request(step)
+            
+            readEnd=time.time_ns()
+            readLength=(readEnd-readStart) / (10 ** 9) 
+            time.sleep(step-readLength)
+
             print(f"[{elapsed:.1f}s] ({power}W) {self.determine_state(power)}" , end='\n')
 
             timestamps.append(elapsed)
             power_values.append(power)            
-            time.sleep(step)
+
 
             lastReading=power
             elapsed+=step
@@ -159,7 +166,7 @@ class SmartPlug(btle.Peripheral):
 
             buffer += struct.pack(">?16sBbbbb", True, program["name"].encode('iso-8859-1'), program["flags"], start_hour, start_minute, end_hour, end_minute)
 
-        buffer = buffer.ljust(2 + 5*22, '\0')
+        buffer = buffer.ljust(2 + 5*22, b'\0')
         self.write_data(self.get_buffer(buffer))
         self.wait_data(0.5)
         return self.delegate.history
