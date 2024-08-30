@@ -10,6 +10,33 @@ from bluepy import btle
 START_OF_MESSAGE = b'\x0f'
 END_OF_MESSAGE = b'\xff\xff'
 
+class circularlist(object): #cool ring buffer from stackOverflow
+    def __init__(self, size, data = []):
+        """Initialization"""
+        self.index = 0
+        self.size = size
+        self._data = list(data)[-size:]
+        self.isPumpOn=False
+
+    def append(self, value):
+        """Append an element"""
+        if len(self._data) == self.size:
+            self._data[self.index] = value
+        else:
+            self._data.append(value)
+        self.index = (self.index + 1) % self.size
+
+    def __getitem__(self, key):
+        """Get element by index, relative to the current index"""
+        if len(self._data) == self.size:
+            return(self._data[(key + self.index) % self.size])
+        else:
+            return(self._data[key])
+
+    def __repr__(self):
+        """Return string representation"""
+        return (self._data[self.index:] + self._data[:self.index]).__repr__() + ' (' + str(len(self._data))+'/{} items)'.format(self.size)         
+
 
 class SmartPlug(btle.Peripheral):
     def __init__(self, addr):
@@ -206,6 +233,83 @@ class SmartPlug(btle.Peripheral):
         self.delegate.need_data = True
         while self.delegate.need_data and self.waitForNotifications(timeout):
             pass
+    
+    
+    
+    powerStates=circularlist(4)
+    powerStates.append(0) #initialize 4 values
+    powerStates.append(0)
+    powerStates.append(0)
+    powerStates.append(0)
+
+    lastPowerStates = [powerStates[0], powerStates[-1], powerStates[-2],powerStates[-3]]
+    isPumpOn=False
+    isVendAllowed=True
+    pumpOffCount=0
+    
+    def machine_state(self):
+        pumpThreshold = [34,43]
+        readStart=time.time_ns()
+        plugState, powerDraw, voltage = plug.status_request(0.4)
+
+        readEnd=time.time_ns()
+        readLength=(readEnd-readStart) / (10 ** 9) 
+        time.sleep(0.4-readLength)
+
+        if min(pumpThreshold) <= min(self.lastPowerStates) <= max(pumpThreshold):
+            self.isPumpOn = True
+        else:
+            self.isPumpOn = False
+
+        if max(self.lastPowerStates) >= max(pumpThreshold):
+            isHeating = True
+        else:
+            isHeating = False
+
+        self.powerStates.append(powerDraw)
+        self.lastPowerStates = [self.powerStates[0], self.powerStates[-1], self.powerStates[-2],self.powerStates[-3]]
+        print(powerDraw)
+        return self.isPumpOn,isHeating
+    
+    def abort_vend(self):
+        print("vend complete!")
+        self.isVendAllowed=False
+        plug.off()
+        print("plug turned off")
+        self.pumpOffCount=0
+    
+
+
+    def coffee_sale(self):
+        espressoLength=30
+        
+        brewStart=0
+        plug.on()
+        
+        print("plug turned on")
+
+        while(self.isVendAllowed):
+
+            lastPumpState=self.isPumpOn
+
+            
+            (self.isPumpOn,isHeating)= plug.machine_state()
+                        
+            print(f"Heating: {isHeating}, Pump: {self.isPumpOn}")
+            
+            if not lastPumpState and self.isPumpOn: #brewing has started
+                brewStart = time.time()
+                print(" BREW STARTED", end='')
+            
+            if brewStart!= 0:
+                if self.isPumpOn==False: #pump has stopped
+                    self.pumpOffCount+=1
+                    
+                    if self.pumpOffCount>=5:
+                        self.abort_vend()
+                
+                if time.time()-brewStart>=espressoLength:
+                    self.abort_vend()
 
 
 class NotificationDelegate(btle.DefaultDelegate):
@@ -279,13 +383,18 @@ class NotificationDelegate(btle.DefaultDelegate):
                 program_offset += 22
         if bytes_data[0:4] == b'\x0f\x05\x0f\x00':
             self.chg_is_ok = True
+
+
+
+            
 # SmartPlugSmpB16 usage sample: cycle power then log plug state and power level to terminal
 if __name__ == '__main__':
     import time
 
     # connect to the plug with bluetooth address
-    plug = SmartPlug('98:7B:F3:34:78:52')
-
+    plug = SmartPlug('20:c3:8f:f4:f5:2b')
+    plug.coffee_sale()
+    """
     # cycle power
     plug.off()
     time.sleep(2.0)
@@ -297,3 +406,4 @@ if __name__ == '__main__':
         print('plug state = %s' % ('on' if state else 'off'))
         print('plug power = %d W' % power)
         time.sleep(2.0)
+"""
